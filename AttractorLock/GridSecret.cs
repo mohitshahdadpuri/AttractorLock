@@ -71,7 +71,7 @@ internal sealed class GridChallenge
 /// edges) and type the character you land on, or the next one if shifting.
 ///
 /// Example: anchor K, path R D D L, shift on. If K is at row 1, column 1, you land on (1,2),
-/// (2,2), (3,2), (3,1); if those show 2 W N H, the answer is 3 X P J.
+/// (2,2), (3,2), (3,1); if those show 2 W N H, the answer is 3 X O I.
 ///
 /// The answer is different for every grid, so watching one unlock doesn't give the next one away.
 /// </summary>

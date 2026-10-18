@@ -19,6 +19,16 @@ $MenuLnk    = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName.lnk
 $UninstKey  = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$AppName"
 
 function Say($msg) { Write-Host "  $msg" }
+
+# Windows can keep the exe locked for a moment after its process has exited (handle
+# cleanup, antivirus scans), so file operations on it are retried for up to 10 seconds.
+function Retry([scriptblock]$Action) {
+    for ($i = 1; ; $i++) {
+        try { & $Action; return }
+        catch { if ($i -ge 20) { throw }; Start-Sleep -Milliseconds 500 }
+    }
+}
+
 Write-Host "Uninstalling $AppName"
 
 # ---- Stop the tray app (never a curtain that is up) ----
@@ -43,7 +53,7 @@ if (Test-Path $UninstKey) { Remove-Item -Path $UninstKey -Recurse -Force; Say "R
 # from a short-lived helper process once this script has exited.
 if (Test-Path $InstallDir) {
     $exe = Join-Path $InstallDir "$AppName.exe"
-    if (Test-Path $exe) { Remove-Item -LiteralPath $exe -Force }
+    if (Test-Path $exe) { Retry { Remove-Item -LiteralPath $exe -Force } }
     $cmd = "Start-Sleep -Seconds 2; Remove-Item -LiteralPath '$InstallDir' -Recurse -Force -ErrorAction SilentlyContinue"
     Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-Command', $cmd -WindowStyle Hidden
     Say "Removed $InstallDir"
