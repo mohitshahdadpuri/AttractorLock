@@ -27,6 +27,15 @@ $UninstKey  = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$AppNam
 
 function Say($msg) { Write-Host "  $msg" }
 
+# Windows can keep the exe locked for a moment after its process has exited (handle
+# cleanup, antivirus scans), so file operations on it are retried for up to 10 seconds.
+function Retry([scriptblock]$Action) {
+    for ($i = 1; ; $i++) {
+        try { & $Action; return }
+        catch { if ($i -ge 20) { throw }; Start-Sleep -Milliseconds 500 }
+    }
+}
+
 # ---- 1. Find the exe to install ----
 if (-not $Source) {
     $candidates = @(
@@ -55,7 +64,7 @@ foreach ($p in $running) {
 # ---- 3. Copy files ----
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 if ($Source -ne $Exe) {
-    Copy-Item -LiteralPath $Source -Destination $Exe -Force
+    Retry { Copy-Item -LiteralPath $Source -Destination $Exe -Force }
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'uninstall.ps1') -Destination (Join-Path $InstallDir 'uninstall.ps1') -Force
 Say "Copied to $InstallDir"
