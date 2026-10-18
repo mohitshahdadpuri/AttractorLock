@@ -42,6 +42,20 @@ public class ProcessTests
     }
 
     [Fact]
+    public void UndecryptableGridFile_CurtainRefusesToStart()
+    {
+        // e.g. cfg.dat copied from another Windows account: DPAPI can't read it.
+        using var data = new TestDataDir(password: null);
+        File.WriteAllBytes(Path.Combine(data.Dir, "cfg.dat"),
+            "ALG1"u8.ToArray().Concat(System.Security.Cryptography.RandomNumberGenerator.GetBytes(64)).ToArray());
+        using var p = CurtainProcess.Start(data);
+
+        Assert.True(p.WaitForExit(Timeout));
+        Assert.Equal(ExitCodes.ConfigInvalid, p.Process.ExitCode);
+        Assert.Empty(p.LockLogReasons());
+    }
+
+    [Fact]
     public void PasswordFileLockedByAnotherProgram_CurtainRefusesToStart()
     {
         using var data = new TestDataDir(password: "locked-file-pass");

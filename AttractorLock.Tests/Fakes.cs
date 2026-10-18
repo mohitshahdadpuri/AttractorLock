@@ -50,3 +50,27 @@ internal sealed class ControllerHarness
         }
     }
 }
+
+/// <summary>
+/// Stands in for DPAPI in store tests: scrambles the bytes and adds a check byte, so a
+/// damaged file fails to decrypt the way a DPAPI blob would.
+/// </summary>
+internal sealed class FakeProtector : ISecretProtector
+{
+    public byte[] Protect(byte[] data)
+    {
+        var result = data.Select(b => (byte)(b ^ 0x5A)).ToList();
+        result.Add(Check(data));
+        return result.ToArray();
+    }
+
+    public byte[] Unprotect(byte[] data)
+    {
+        if (data.Length == 0) throw new System.Security.Cryptography.CryptographicException("empty");
+        byte[] plain = data[..^1].Select(b => (byte)(b ^ 0x5A)).ToArray();
+        if (Check(plain) != data[^1]) throw new System.Security.Cryptography.CryptographicException("bad check byte");
+        return plain;
+    }
+
+    private static byte Check(byte[] data) => (byte)data.Aggregate(0x33, (acc, b) => (acc * 31 + b) & 0xFF);
+}

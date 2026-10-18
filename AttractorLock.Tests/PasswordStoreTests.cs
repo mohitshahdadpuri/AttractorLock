@@ -109,8 +109,9 @@ public sealed class PasswordStoreTests : IDisposable
         var s = NewStore(PasswordStore.DefaultIterations);
         s.Set("strong-pass");
         Assert.True(s.TryLoad(out var stored) == PasswordStatus.Valid);
-        Assert.Equal(PasswordStore.DefaultIterations, stored!.Iterations);
-        Assert.True(stored.Verify("strong-pass"));
+        var p = Assert.IsType<StoredPassword>(stored);
+        Assert.Equal(PasswordStore.DefaultIterations, p.Iterations);
+        Assert.True(p.Verify("strong-pass"));
     }
 
     [Fact]
@@ -277,7 +278,7 @@ public sealed class PasswordStoreTests : IDisposable
         s.Set("in-memory-pass");
         Assert.Equal(PasswordStatus.Valid, s.TryLoad(out var stored));
         File.Delete(s.FilePath);
-        Assert.True(stored!.Verify("in-memory-pass"));
+        Assert.True(Assert.IsType<StoredPassword>(stored).Verify("in-memory-pass"));
     }
 
     // ---------- Default location ----------

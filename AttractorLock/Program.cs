@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -216,11 +217,19 @@ internal sealed class TrayContext : ApplicationContext
     private void SetPassword()
     {
         using var f = new PasswordSetupForm();
-        if (f.ShowDialog() != DialogResult.OK || string.IsNullOrEmpty(f.Password)) return;
+        if (f.ShowDialog() != DialogResult.OK) return;
         try
         {
-            _store.Set(f.Password);
-            Notify("Password saved.", ToolTipIcon.Info);
+            if (f.Grid is not null)
+            {
+                _store.SetGrid(f.Grid);
+                Notify("Grid code saved.", ToolTipIcon.Info);
+            }
+            else if (!string.IsNullOrEmpty(f.Password))
+            {
+                _store.Set(f.Password);
+                Notify("Password saved.", ToolTipIcon.Info);
+            }
         }
         catch (Exception ex)
         {
@@ -263,12 +272,27 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
     public void Dispose() => DestroyHandle();
 }
 
-/// <summary>Simple WinForms dialog to set/confirm the access password.</summary>
+/// <summary>
+/// WinForms dialog to choose how the curtain unlocks: a fixed password (typed twice), or a
+/// grid code (anchor + path + shift), with a practice grid showing what you'd type.
+/// </summary>
 internal sealed class PasswordSetupForm : Form
 {
+    private readonly RadioButton _fixedMode = new() { Text = "Fixed password", AutoSize = true, Checked = true };
+    private readonly RadioButton _gridMode = new() { Text = "Grid code (different every time)", AutoSize = true };
     private readonly TextBox _p1 = new() { UseSystemPasswordChar = true, Width = 240 };
     private readonly TextBox _p2 = new() { UseSystemPasswordChar = true, Width = 240 };
+    private readonly TextBox _anchor = new() { Width = 40, MaxLength = 1, CharacterCasing = CharacterCasing.Upper };
+    private readonly TextBox _path = new() { Width = 160, CharacterCasing = CharacterCasing.Upper };
+    private readonly CheckBox _shift = new() { Text = "Shift by one (type the next character: A→B, Z→A, 9→0)", AutoSize = true, Checked = true };
+    private readonly Label _sample = new() { AutoSize = true, Font = new Font(FontFamily.GenericMonospace, 14f), Margin = new Padding(3, 6, 3, 6) };
+    private readonly Label _answer = new() { AutoSize = true };
+    private readonly FlowLayoutPanel _fixedPanel;
+    private readonly FlowLayoutPanel _gridPanel;
+    private GridChallenge? _sampleGrid;
+
     public string? Password { get; private set; }
+    public GridSecret? Grid { get; private set; }
 
     public PasswordSetupForm()
     {
@@ -276,17 +300,88 @@ internal sealed class PasswordSetupForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false; MinimizeBox = false;
-        ClientSize = new Size(300, 170);
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        Padding = new Padding(9);
         TopMost = true;
 
-        Controls.Add(new Label { Text = "New password:", Left = 12, Top = 15, AutoSize = true });
-        _p1.Left = 12; _p1.Top = 35; Controls.Add(_p1);
-        Controls.Add(new Label { Text = "Confirm password:", Left = 12, Top = 70, AutoSize = true });
-        _p2.Left = 12; _p2.Top = 90; Controls.Add(_p2);
+        _fixedPanel = Column(
+            new Label { Text = "New password:", AutoSize = true },
+            _p1,
+            new Label { Text = "Confirm password:", AutoSize = true, Margin = new Padding(3, 10, 3, 0) },
+            _p2);
 
-        var ok = new Button { Text = "Save", Left = 60, Top = 128, DialogResult = DialogResult.None };
-        var cancel = new Button { Text = "Cancel", Left = 160, Top = 128, DialogResult = DialogResult.Cancel };
-        ok.Click += (_, _) =>
+        _gridPanel = Column(
+            new Label
+            {
+                Text = "Each time you click Access, a new grid appears with your anchor in it once.\n" +
+                       "Start at the anchor, follow your path (it wraps around the edges) and type\n" +
+                       "the character you land on after each move.",
+                AutoSize = true
+            },
+            Row(new Label { Text = "Anchor:", AutoSize = true, Anchor = AnchorStyles.Left }, _anchor,
+                new Label { Text = "Path:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(12, 3, 3, 3) }, _path),
+            new Label { Text = $"Path moves: U D L R (or arrows), {GridSecret.MinPathLength}–{GridSecret.MaxPathLength} of them, e.g. R D D L", AutoSize = true, ForeColor = SystemColors.GrayText },
+            _shift,
+            new Label { Text = "Practice grid:", AutoSize = true, Margin = new Padding(3, 10, 3, 0) },
+            _sample,
+            Row(_answer, NewButton("New sample", (_, _) => { _sampleGrid = null; UpdatePreview(); })));
+        _gridPanel.Visible = false;
+
+        var save = NewButton("Save", (_, _) => Save());
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
+
+        var root = Column(
+            Row(_fixedMode, _gridMode),
+            _fixedPanel,
+            _gridPanel,
+            Row(save, cancel));
+        Controls.Add(root);
+        AcceptButton = save; CancelButton = cancel;
+
+        _fixedMode.CheckedChanged += (_, _) => UpdateMode();
+        _anchor.TextChanged += (_, _) => { _sampleGrid = null; UpdatePreview(); };
+        _path.TextChanged += (_, _) => UpdatePreview();
+        _shift.CheckedChanged += (_, _) => UpdatePreview();
+        UpdatePreview();
+    }
+
+    private void UpdateMode()
+    {
+        _fixedPanel.Visible = _fixedMode.Checked;
+        _gridPanel.Visible = _gridMode.Checked;
+        (_fixedMode.Checked ? _p1 : _anchor).Focus();
+    }
+
+    private void UpdatePreview()
+    {
+        string? error = GridSecret.Validate(_anchor.Text, _path.Text);
+        if (error is not null)
+        {
+            _sample.Text = string.Join("\n", Enumerable.Repeat(string.Join("  ", Enumerable.Repeat("·", GridChallenge.Size)), GridChallenge.Size));
+            _answer.Text = _anchor.Text.Length == 0 && _path.Text.Length == 0 ? "Pick an anchor and a path." : error;
+            return;
+        }
+        var secret = new GridSecret(_anchor.Text.Trim()[0], _path.Text, _shift.Checked);
+        if (_sampleGrid is null || _sampleGrid.Cells.IndexOf(secret.Anchor) < 0)
+            _sampleGrid = GridChallenge.Create(secret.Anchor);
+        _sample.Text = _sampleGrid.ToString();
+        _answer.Text = "You would type: " + secret.ExpectedAnswer(_sampleGrid);
+    }
+
+    private void Save()
+    {
+        if (_gridMode.Checked)
+        {
+            string? error = GridSecret.Validate(_anchor.Text, _path.Text);
+            if (error is not null)
+            {
+                MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            Grid = new GridSecret(_anchor.Text.Trim()[0], _path.Text, _shift.Checked);
+        }
+        else
         {
             string? error = PasswordPolicy.Validate(_p1.Text, _p2.Text);
             if (error is not null)
@@ -295,9 +390,31 @@ internal sealed class PasswordSetupForm : Form
                 return;
             }
             Password = _p1.Text;
-            DialogResult = DialogResult.OK;
+        }
+        DialogResult = DialogResult.OK;
+    }
+
+    private static Button NewButton(string text, EventHandler onClick)
+    {
+        var b = new Button { Text = text, AutoSize = true };
+        b.Click += onClick;
+        return b;
+    }
+
+    private static FlowLayoutPanel Column(params Control[] children) => Panel(FlowDirection.TopDown, children);
+    private static FlowLayoutPanel Row(params Control[] children) => Panel(FlowDirection.LeftToRight, children);
+
+    private static FlowLayoutPanel Panel(FlowDirection direction, Control[] children)
+    {
+        var p = new FlowLayoutPanel
+        {
+            FlowDirection = direction,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0, 3, 0, 3)
         };
-        Controls.Add(ok); Controls.Add(cancel);
-        AcceptButton = ok; CancelButton = cancel;
+        p.Controls.AddRange(children);
+        return p;
     }
 }
