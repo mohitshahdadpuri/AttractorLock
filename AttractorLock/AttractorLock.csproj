@@ -9,6 +9,9 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>AttractorLock</AssemblyName>
     <RootNamespace>AttractorLock</RootNamespace>
+    <!-- DPI awareness is declared in app.manifest on purpose: the WPF curtain needs
+         per-monitor-v2 before any window exists, which the WinForms API can't guarantee. -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,7 +20,11 @@
 
   <ItemGroup>
     <!-- The attractor page is embedded so the exe is self-contained -->
-    <EmbeddedResource Include="attractor.html" />
+    <EmbeddedResource Include="attractor.html" LogicalName="AttractorLock.attractor.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AttractorLock.Tests" />
   </ItemGroup>
 
 </Project>
