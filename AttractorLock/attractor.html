@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0b0f; overflow: hidden; }
+  canvas { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Clifford attractor, auto-cycling to a new random one every 5 seconds.
+// No clicks, no keys — this page is purely decorative; the app controls everything.
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let SIZE = 0;
+
+function resize() {
+  SIZE = Math.min(1600, Math.round(Math.min(innerWidth, innerHeight) * devicePixelRatio));
+  canvas.width = canvas.height = SIZE;
+}
+resize();
+addEventListener('resize', resize);
+
+const LOW  = [93, 202, 165];   // teal
+const HIGH = [237, 147, 177];  // pink
+const rnd = () => +(Math.random() * 4 - 2).toFixed(3);
+
+function interesting(a, b, c, d) {
+  let x = 0.1, y = 0.1; const s = new Set();
+  for (let i = 0; i < 5000; i++) {
+    const nx = Math.sin(a*y) + c*Math.cos(a*x);
+    const ny = Math.sin(b*x) + d*Math.cos(b*y);
+    x = nx; y = ny;
+    if (i > 500) s.add(Math.round(x*25) + ',' + Math.round(y*25));
+  }
+  return s.size > 1200;
+}
+
+let raf;
+function draw(a, b, c, d) {
+  cancelAnimationFrame(raf);
+  const density = new Float32Array(SIZE * SIZE);
+  const img = ctx.createImageData(SIZE, SIZE);
+  const px = img.data;
+  const scale = SIZE * 0.47 / Math.max(1 + Math.abs(c), 1 + Math.abs(d));
+  let x = 0.1, y = 0.1, max = 1, frame = 0;
+
+  function step() {
+    for (let i = 0; i < 200000; i++) {
+      const nx = Math.sin(a*y) + c*Math.cos(a*x);
+      const ny = Math.sin(b*x) + d*Math.cos(b*y);
+      x = nx; y = ny;
+      const X = (SIZE/2 + x*scale) | 0, Y = (SIZE/2 + y*scale) | 0;
+      if (X >= 0 && Y >= 0 && X < SIZE && Y < SIZE) {
+        const v = ++density[Y*SIZE + X]; if (v > max) max = v;
+      }
+    }
+    const lm = Math.log(max + 1);
+    for (let k = 0; k < density.length; k++) {
+      const v = density[k], o = k*4;
+      if (!v) { px[o+3] = 0; continue; }
+      const t = Math.pow(Math.log(v+1)/lm, 0.7);
+      px[o]   = LOW[0] + (HIGH[0]-LOW[0])*t;
+      px[o+1] = LOW[1] + (HIGH[1]-LOW[1])*t;
+      px[o+2] = LOW[2] + (HIGH[2]-LOW[2])*t;
+      px[o+3] = Math.min(255, 25 + t*300);
+    }
+    ctx.fillStyle = '#0b0b0f';
+    ctx.fillRect(0, 0, SIZE, SIZE);
+    ctx.putImageData(img, 0, 0);
+    if (++frame < 45) raf = requestAnimationFrame(step);
+  }
+  step();
+}
+
+function next() {
+  let a, b, c, d, t = 0;
+  do { a = rnd(); b = rnd(); c = rnd(); d = rnd(); } while (!interesting(a,b,c,d) && ++t < 300);
+  draw(a, b, c, d);
+}
+
+next();
+setInterval(next, 5000);
+</script>
+</body>
+</html>
