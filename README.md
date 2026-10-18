@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.svg" width="128" height="128" alt="AttractorLock logo: the Lorenz attractor"></p>
+
 # AttractorLock
 
 [![CI](https://github.com/mohitshahdadpuri/AttractorLock/actions/workflows/ci.yml/badge.svg)](https://github.com/mohitshahdadpuri/AttractorLock/actions/workflows/ci.yml)
@@ -18,7 +20,7 @@ Note - THIS IS SPECIFICALLY FOR CASE OF ENDPOINT MFA SO IT IS MOST PROBABLY USEL
 1. Download **`AttractorLock-vX.Y.Z-win-x64.zip`** from the
    [latest release](https://github.com/mohitshahdadpuri/AttractorLock/releases/latest) and extract it.
 2. Double-click **`install.cmd`**. No admin rights are needed.
-3. Set your password when asked. A shield icon appears in the system tray.
+3. Set your password when asked. The AttractorLock icon (a butterfly) appears in the system tray.
 
 The installer puts the app in `%LOCALAPPDATA%\Programs\AttractorLock`, starts it with Windows
 and adds it to **Settings › Apps**, where you can uninstall it. Running a newer installer
@@ -32,10 +34,10 @@ screen is what actually keeps people out.
 
 | To | Do |
 |---|---|
-| Cover the screen | **Ctrl+Break**, or double-click the tray shield |
+| Cover the screen | **Ctrl+Break**, or double-click the tray icon |
 | Come back | Click **Access** (bottom-right of any screen) and enter your password or code |
-| Try it without real locks | Right-click the shield → tick **Test mode** |
-| Change your password, or switch to a grid code | Right-click the shield → **Set password…** |
+| Try it without real locks | Right-click the tray icon → tick **Test mode** |
+| Change your password, or switch to a grid code | Right-click the tray icon → **Set password…** |
 
 ### Grid codes: a different code every time
 
@@ -107,6 +109,7 @@ CI runs both suites on Windows for every push to `main` and every pull request.
 | `AttractorLock/` | The app: tray listener, curtain, password store, grid codes, attractor page |
 | `AttractorLock.Tests/` | xUnit tests, including UI Automation E2E tests |
 | `installer/` | Per-user install and uninstall scripts |
+| `tools/make-logo.ps1` | Draws the logo from the Lorenz equations and writes the `.ico`, `docs/logo.png` and `docs/logo.svg` |
 | `.github/workflows/ci.yml` | Build and test on Windows |
 
 ## License

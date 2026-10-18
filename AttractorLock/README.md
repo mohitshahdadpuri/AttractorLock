@@ -97,16 +97,16 @@ where the installer looks for it.
 > install from https://developer.microsoft.com/microsoft-edge/webview2/.
 
 ## Set your password and run it
-1. **Start it.** Double-click `AttractorLock.exe`. No window opens; a **shield icon** appears in
-   the system tray next to the clock (it may be hidden behind the **^** arrow).
+1. **Start it.** Double-click `AttractorLock.exe`. No window opens; the **AttractorLock icon** (a
+   cyan and pink butterfly) appears in the system tray next to the clock (it may be hidden behind the **^** arrow).
 2. **Set your password.** On the very first start a **"Set access password"** window opens on
    its own: type the password twice and click **Save**. To change it later, right-click the
-   shield and choose **Set password…**.
-3. **Try it once in Test mode.** Right-click the shield, tick **Test mode**, and press **Ctrl+Break**.
+   tray icon and choose **Set password…**.
+3. **Try it once in Test mode.** Right-click the tray icon, tick **Test mode**, and press **Ctrl+Break**.
    In test mode nothing is ever locked. When the curtain *would* lock, it shows the reason in an
    orange banner, writes it to `%LOCALAPPDATA%\AttractorLock\test-lock.log`, and closes, just as a
    real lock would. When you're happy, untick Test mode.
-4. **Every day:** press **Ctrl+Break** (or double-click the shield) before you leave your desk.
+4. **Every day:** press **Ctrl+Break** (or double-click the tray icon) before you leave your desk.
    When you're back, click **Access** (bottom-right of any screen) and type your password.
 
 Your **Windows account must have a password or PIN**: every way around the curtain ends at the
