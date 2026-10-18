@@ -108,3 +108,7 @@ CI runs both suites on Windows for every push to `main` and every pull request.
 | `AttractorLock.Tests/` | xUnit tests, including UI Automation E2E tests |
 | `installer/` | Per-user install and uninstall scripts |
 | `.github/workflows/ci.yml` | Build and test on Windows |
+
+## License
+
+[MIT](LICENSE)
