@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using WpfApp = System.Windows.Application;
 
@@ -19,56 +20,103 @@ namespace AttractorLock;
 internal static class Program
 {
     [STAThread]
-    private static void Main(string[] args)
+    private static int Main(string[] args)
     {
-        if (Array.Exists(args, a => a.Equals("--curtain", StringComparison.OrdinalIgnoreCase)))
-        {
-            bool test = Array.Exists(args, a => a.Equals("--test", StringComparison.OrdinalIgnoreCase));
-            RunCurtain(test);
-        }
-        else
-        {
-            RunTray();
-        }
+        var options = CommandLineOptions.Parse(args);
+        return options.Curtain ? RunCurtain(options) : RunTray();
     }
 
     // ---------- Curtain process ----------
-    private static void RunCurtain(bool test)
+    private static int RunCurtain(CommandLineOptions options)
     {
+        if (options.Test && !string.IsNullOrWhiteSpace(options.LockLogPath))
+            CurtainLog.UseDirectory(System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(options.LockLogPath))!);
+        CurtainLog.Write($"curtain starting ({(options.Test ? "TEST mode" : "real mode")})");
+
+        ILockAction lockAction = options.Test
+            ? new SimulatedLockAction(options.LockLogPath)
+            : new WindowsLockAction();
+
+        // Last line of defence: if anything blows up before the session exists, lock rather
+        // than leave the desktop exposed (the tray locks too, on the abnormal exit code).
+        CurtainSession? session = null;
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (session is not null) session.OnFatalError(e.ExceptionObject as Exception ?? new Exception("unknown"));
+            else lockAction.Lock("error during startup");
+        };
+
+        // Only one curtain at a time; a second one would fight the first for focus.
+        using var mutex = new Mutex(true, @"Local\AttractorLock.Curtain", out bool fresh);
+        if (!fresh) { CurtainLog.Write("another curtain is already up; exiting"); return ExitCodes.AlreadyRunning; }
+
+        // Refuse to start, without ever showing a window, unless a password can actually
+        // be verified. Otherwise the user could be put behind a curtain nothing opens.
+        var store = PasswordStore.CreateDefault();
+        var status = store.TryLoad(out var stored);
+        if (status != PasswordStatus.Valid || stored is null)
+        {
+            CurtainLog.Write($"refusing to start: password store is {status} ({store.FilePath})");
+            return ExitCodes.ConfigInvalid;
+        }
+
         var app = new WpfApp { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
-        var window = new CurtainWindow(test);
-        window.Show();
-        app.Run();
+        session = new CurtainSession(app, stored, lockAction, options.Test);
+        app.DispatcherUnhandledException += (_, e) =>
+        {
+            e.Handled = true;
+            session.OnFatalError(e.Exception);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) => e.SetObserved();
+
+        // Start inside the running dispatcher, so async continuations (WebView2 setup) come back
+        // to the UI thread. Starting before app.Run() left the attractor permanently black.
+        app.Startup += (_, _) => session.Start();
+        int code = app.Run();
+        CurtainLog.Write($"curtain exited with code {code}");
+        return code;
     }
 
     // ---------- Tray listener process ----------
-    private static void RunTray()
+    private static int RunTray()
     {
         // Only one listener at a time.
         using var mutex = new Mutex(true, "AttractorLock.Tray.SingleInstance", out bool fresh);
-        if (!fresh) return;
+        if (!fresh) return 0;
 
         ApplicationConfiguration.Initialize();
-        using var ctx = new TrayContext();
+        using var ctx = new TrayContext(PasswordStore.CreateDefault());
         System.Windows.Forms.Application.Run(ctx);
+        return 0;
     }
 }
 
 /// <summary>Owns the tray icon, the hidden message window, and the Ctrl+Break hotkey.</summary>
 internal sealed class TrayContext : ApplicationContext
 {
-    private const int HotkeyId = 0xA17;
+    // Ctrl+Break arrives as VK_CANCEL on most keyboards; VK_PAUSE is registered as a fallback.
+    private const int HotkeyCancelId = 0xA17;
+    private const int HotkeyPauseId = 0xA18;
+    private readonly PasswordStore _store;
     private readonly NotifyIcon _tray;
     private readonly HotkeyWindow _msgWindow;
+    private readonly SynchronizationContext _ui;
     private Process? _curtain;
     private bool _testMode;
 
-    public TrayContext()
+    public TrayContext(PasswordStore store)
     {
+        _store = store;
+        _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         _msgWindow = new HotkeyWindow();
-        _msgWindow.HotkeyPressed += (_, _) => LaunchCurtain();
+        _msgWindow.HotkeyPressed += (_, id) =>
+        {
+            if (id is HotkeyCancelId or HotkeyPauseId) LaunchCurtain();
+        };
 
-        bool ok = Native.RegisterHotKey(_msgWindow.Handle, HotkeyId,
+        bool ok1 = Native.RegisterHotKey(_msgWindow.Handle, HotkeyCancelId,
+            Native.MOD_CONTROL | Native.MOD_NOREPEAT, Native.VK_CANCEL_U);
+        bool ok2 = Native.RegisterHotKey(_msgWindow.Handle, HotkeyPauseId,
             Native.MOD_CONTROL | Native.MOD_NOREPEAT, Native.VK_PAUSE);
 
         var menu = new ContextMenuStrip();
@@ -84,40 +132,112 @@ internal sealed class TrayContext : ApplicationContext
         {
             Icon = SystemIcons.Shield,
             Visible = true,
-            Text = ok ? "AttractorLock — press Ctrl+Break to cover the screen"
-                      : "AttractorLock — HOTKEY IN USE, use the menu",
+            Text = ok1 || ok2 ? "AttractorLock — press Ctrl+Break to cover the screen"
+                              : "AttractorLock — HOTKEY IN USE, use the menu",
             ContextMenuStrip = menu
         };
         _tray.DoubleClick += (_, _) => LaunchCurtain();
 
-        if (!PasswordStore.IsSet)
-            SetPassword();   // first run: make the user pick a password
+        if (_store.Status != PasswordStatus.Valid)
+            EnsurePassword();   // first run (or damaged file): make the user pick a password
+    }
+
+    /// <summary>Returns true once a verifiable password is stored.</summary>
+    private bool EnsurePassword()
+    {
+        switch (_store.Status)
+        {
+            case PasswordStatus.Valid:
+                return true;
+            case PasswordStatus.Unreadable:
+                Notify("Couldn't read the saved password file right now (in use by another program?). Try again in a moment.", ToolTipIcon.Warning);
+                return false;
+            case PasswordStatus.Corrupt:
+                MessageBox.Show("The saved password file is damaged, so it could never unlock the curtain. Please set a new password.",
+                    "AttractorLock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                break;
+        }
+        SetPassword();
+        return _store.Status == PasswordStatus.Valid;
     }
 
     private void LaunchCurtain()
     {
         if (_curtain is { HasExited: false }) return;   // already up
-        if (!PasswordStore.IsSet) { SetPassword(); if (!PasswordStore.IsSet) return; }
+        if (!EnsurePassword()) return;
 
-        string exe = Environment.ProcessPath ?? Assembly.GetExecutingAssembly().Location;
+        // (Assembly.Location is empty in a single-file exe, so it can't be the fallback.)
+        string exe = Environment.ProcessPath ?? System.IO.Path.Combine(AppContext.BaseDirectory, "AttractorLock.exe");
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false };
         psi.ArgumentList.Add("--curtain");
-        if (_testMode) psi.ArgumentList.Add("--test");
-        _curtain = Process.Start(psi);
+        bool test = _testMode;
+        if (test) psi.ArgumentList.Add("--test");
+
+        // We just received the hotkey, so we are allowed to hand foreground rights on.
+        // Without this, the curtain can appear without keyboard focus.
+        Native.AllowSetForegroundWindow(Native.ASFW_ANY);
+
+        Process? p;
+        try { p = Process.Start(psi); }
+        catch (Exception ex) { Notify("Couldn't start the curtain: " + ex.Message, ToolTipIcon.Error); return; }
+        if (p is null) { Notify("Couldn't start the curtain.", ToolTipIcon.Error); return; }
+
+        p.EnableRaisingEvents = true;
+        p.Exited += (_, _) => OnCurtainExited(p, test);
+        _curtain = p;
+    }
+
+    /// <summary>Runs on a thread-pool thread. Locks immediately if the curtain died without a clean exit.</summary>
+    private void OnCurtainExited(Process p, bool test)
+    {
+        int code;
+        try { code = p.ExitCode; } catch (Exception) { code = -1; }
+
+        TrayAction action = CurtainExitPolicy.Decide(code);
+        if (action == TrayAction.LockWorkstation && !test)
+            Native.LockWorkStation();   // don't wait for the UI thread
+
+        _ui.Post(_ =>
+        {
+            if (ReferenceEquals(_curtain, p)) _curtain = null;
+            p.Dispose();
+            switch (action)
+            {
+                case TrayAction.NotifyConfigInvalid:
+                    Notify("The curtain didn't start: no valid password is saved. Use \"Set password…\".", ToolTipIcon.Warning);
+                    break;
+                case TrayAction.LockWorkstation when test:
+                    Notify($"[TEST] The curtain exited abnormally (code {code}). Windows would be locked now.", ToolTipIcon.Warning);
+                    break;
+            }
+        }, null);
     }
 
     private void SetPassword()
     {
         using var f = new PasswordSetupForm();
-        if (f.ShowDialog() == DialogResult.OK && !string.IsNullOrEmpty(f.Password))
-            PasswordStore.Set(f.Password);
+        if (f.ShowDialog() != DialogResult.OK || string.IsNullOrEmpty(f.Password)) return;
+        try
+        {
+            _store.Set(f.Password);
+            Notify("Password saved.", ToolTipIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Couldn't save the password: " + ex.Message + "\nYour previous password (if any) is unchanged.",
+                "AttractorLock", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
+
+    private void Notify(string text, ToolTipIcon icon) =>
+        _tray.ShowBalloonTip(5000, "AttractorLock", text, icon);
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            Native.UnregisterHotKey(_msgWindow.Handle, HotkeyId);
+            Native.UnregisterHotKey(_msgWindow.Handle, HotkeyCancelId);
+            Native.UnregisterHotKey(_msgWindow.Handle, HotkeyPauseId);
             _tray.Visible = false;
             _tray.Dispose();
             _msgWindow.Dispose();
@@ -129,14 +249,14 @@ internal sealed class TrayContext : ApplicationContext
 /// <summary>Invisible window that receives WM_HOTKEY.</summary>
 internal sealed class HotkeyWindow : NativeWindow, IDisposable
 {
-    public event EventHandler? HotkeyPressed;
+    public event EventHandler<int>? HotkeyPressed;
 
     public HotkeyWindow() => CreateHandle(new CreateParams());
 
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == Native.WM_HOTKEY)
-            HotkeyPressed?.Invoke(this, EventArgs.Empty);
+            HotkeyPressed?.Invoke(this, (int)m.WParam);
         base.WndProc(ref m);
     }
 
@@ -168,8 +288,12 @@ internal sealed class PasswordSetupForm : Form
         var cancel = new Button { Text = "Cancel", Left = 160, Top = 128, DialogResult = DialogResult.Cancel };
         ok.Click += (_, _) =>
         {
-            if (_p1.Text.Length == 0) { MessageBox.Show("Password can't be empty."); return; }
-            if (_p1.Text != _p2.Text) { MessageBox.Show("Passwords don't match."); return; }
+            string? error = PasswordPolicy.Validate(_p1.Text, _p2.Text);
+            if (error is not null)
+            {
+                MessageBox.Show(this, error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
             Password = _p1.Text;
             DialogResult = DialogResult.OK;
         };

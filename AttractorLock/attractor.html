@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <style>
   html, body { margin: 0; height: 100%; background: #0b0b0f; overflow: hidden; }
-  canvas { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  /* square canvas, centred, never stretched */
+  canvas { display: block; position: fixed; inset: 0; margin: auto;
+           width: min(100vw, 100vh); height: min(100vw, 100vh); }
 </style>
 </head>
 <body>
@@ -14,14 +16,13 @@
 // No clicks, no keys — this page is purely decorative; the app controls everything.
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-let SIZE = 0;
+const sizeNow = () => Math.max(1, Math.min(1600, Math.round(Math.min(innerWidth, innerHeight) * devicePixelRatio)));
 
 function resize() {
-  SIZE = Math.min(1600, Math.round(Math.min(innerWidth, innerHeight) * devicePixelRatio));
-  canvas.width = canvas.height = SIZE;
+  canvas.width = canvas.height = sizeNow();
 }
 resize();
-addEventListener('resize', resize);
+addEventListener('resize', () => { resize(); next(); });
 
 const LOW  = [93, 202, 165];   // teal
 const HIGH = [237, 147, 177];  // pink
@@ -41,6 +42,7 @@ function interesting(a, b, c, d) {
 let raf;
 function draw(a, b, c, d) {
   cancelAnimationFrame(raf);
+  const SIZE = sizeNow();   // fixed for this drawing, even if the window resizes
   const density = new Float32Array(SIZE * SIZE);
   const img = ctx.createImageData(SIZE, SIZE);
   const px = img.data;
