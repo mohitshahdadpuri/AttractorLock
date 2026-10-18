@@ -131,7 +131,7 @@ internal sealed class TrayContext : ApplicationContext
 
         _tray = new NotifyIcon
         {
-            Icon = SystemIcons.Shield,
+            Icon = AppIcon.Load(SystemInformation.SmallIconSize),
             Visible = true,
             Text = ok1 || ok2 ? "AttractorLock — press Ctrl+Break to cover the screen"
                               : "AttractorLock — HOTKEY IN USE, use the menu",
@@ -297,6 +297,7 @@ internal sealed class PasswordSetupForm : Form
     public PasswordSetupForm()
     {
         Text = "Set access password";
+        Icon = AppIcon.Load(SystemInformation.IconSize);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false; MinimizeBox = false;

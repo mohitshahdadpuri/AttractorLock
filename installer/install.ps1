@@ -94,6 +94,7 @@ $props = @{
     Publisher       = $env:USERNAME
     InstallLocation = $InstallDir
     DisplayIcon     = "$Exe,0"
+    EstimatedSize   = [int][math]::Ceiling((Get-Item $Exe).Length / 1KB)   # in KB; shown as the size in Settings
     UninstallString = $uninstallCmd
     NoModify        = 1
     NoRepair        = 1
@@ -107,10 +108,10 @@ Say "Registered in Settings > Apps"
 # ---- 6. Launch ----
 if (-not $NoLaunch) {
     Start-Process -FilePath $Exe -WorkingDirectory $InstallDir
-    Say "Started. Look for the shield icon in the system tray."
+    Say "Started. Look for the AttractorLock icon (a butterfly) in the system tray."
 }
 
 $pw = Join-Path $env:APPDATA "$AppName\cfg.dat"
 if (Test-Path $pw) { Say "Your existing password is kept." }
 else { Say "First run: you'll be asked to set a password." }
-Write-Host "Done. Press Ctrl+Break (or double-click the tray shield) to cover the screen."
+Write-Host "Done. Press Ctrl+Break (or double-click the tray icon) to cover the screen."
