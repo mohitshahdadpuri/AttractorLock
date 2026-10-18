@@ -1,9 +1,13 @@
 name: CI
 
+# Documentation-only changes (README and other Markdown) don't need a build. A push or PR
+# that also touches anything else still runs everything.
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md']
   pull_request:
+    paths-ignore: ['**.md']
   workflow_dispatch:
 
 jobs:
