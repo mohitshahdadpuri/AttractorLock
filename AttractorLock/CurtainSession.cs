@@ -24,7 +24,7 @@ internal sealed class CurtainSession
     private static readonly TimeSpan SimulatedLockDelay = TimeSpan.FromMilliseconds(1500);
 
     private readonly Application _app;
-    private readonly StoredPassword _password;
+    private readonly StoredSecret _secret;
     private readonly bool _testMode;
     private readonly CurtainController _controller;
     private readonly List<CurtainWindow> _windows = new();
@@ -36,10 +36,10 @@ internal sealed class CurtainSession
     private bool _dialogOpen;
     private bool _shutDown;
 
-    public CurtainSession(Application app, StoredPassword password, ILockAction lockAction, bool testMode)
+    public CurtainSession(Application app, StoredSecret secret, ILockAction lockAction, bool testMode)
     {
         _app = app;
-        _password = password;
+        _secret = secret;
         _testMode = testMode;
         _controller = new CurtainController(lockAction, OnControllerExit, DateTime.UtcNow);
         _sampler = new DispatcherTimer(DispatcherPriority.Normal, app.Dispatcher) { Interval = SampleInterval };
@@ -147,13 +147,22 @@ internal sealed class CurtainSession
         _dialogOpen = true;
         try
         {
-            var dlg = new InputDialog("Enter password to unlock:", owner);
+            // Grid mode: a new grid for every attempt, so an answer seen once is useless later.
+            var grid = _secret is GridSecret g ? GridChallenge.Create(g.Anchor) : null;
+            var dlg = grid is null
+                ? new InputDialog("Enter password to unlock:", owner)
+                : new InputDialog("Enter the code for this grid:", owner, grid);
             bool? ok = dlg.ShowDialog();
             if (ok != true) { _controller.Cancelled(); return; }
 
             string typed = dlg.Result ?? "";
             // PBKDF2 off the UI thread so the curtain stays responsive.
-            bool correct = await Task.Run(() => _password.Verify(typed));
+            bool correct = await Task.Run(() => _secret switch
+            {
+                StoredPassword p => p.Verify(typed),
+                GridSecret gs => gs.Verify(grid!, typed),
+                _ => false,
+            });
             _controller.PasswordSubmitted(correct, DateTime.UtcNow);
         }
         finally

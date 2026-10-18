@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -10,6 +11,7 @@ namespace AttractorLock;
 /// A minimal always-on-top password box. Its owner is the curtain window for one monitor,
 /// so CenterOwner always lands on a real screen. Returns the typed text, or null if cancelled.
 /// (Esc is swallowed by the keyboard hook, so Cancel is the button.)
+/// In grid mode it also shows the grid the code has to be read from.
 /// </summary>
 internal sealed class InputDialog : Window
 {
@@ -24,7 +26,7 @@ internal sealed class InputDialog : Window
     };
     public string? Result { get; private set; }
 
-    public InputDialog(string prompt, Window owner)
+    public InputDialog(string prompt, Window owner, GridChallenge? grid = null)
     {
         Owner = owner;
         Title = "Access";
@@ -61,6 +63,7 @@ internal sealed class InputDialog : Window
 
         var panel = new StackPanel { Margin = new Thickness(24) };
         panel.Children.Add(label);
+        if (grid is not null) panel.Children.Add(BuildGrid(grid));
         panel.Children.Add(_box);
         panel.Children.Add(_capsWarning);
         panel.Children.Add(buttons);
@@ -68,6 +71,43 @@ internal sealed class InputDialog : Window
 
         Loaded += (_, _) => { _box.Focus(); UpdateCapsWarning(); };
         PreviewKeyUp += (_, _) => UpdateCapsWarning();
+    }
+
+    private static UIElement BuildGrid(GridChallenge grid)
+    {
+        var cells = new UniformGrid
+        {
+            Rows = GridChallenge.Size,
+            Columns = GridChallenge.Size,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 16)
+        };
+        AutomationProperties.SetAutomationId(cells, "ChallengeGrid");
+        var cellBrush = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x2a));
+        for (int r = 0; r < GridChallenge.Size; r++)
+            for (int c = 0; c < GridChallenge.Size; c++)
+            {
+                var text = new TextBlock
+                {
+                    Text = grid[r, c].ToString(),
+                    Foreground = Brushes.White,
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 24,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                AutomationProperties.SetAutomationId(text, $"GridCell{r}{c}");
+                cells.Children.Add(new Border
+                {
+                    Width = 44,
+                    Height = 44,
+                    Margin = new Thickness(2),
+                    Background = cellBrush,
+                    CornerRadius = new CornerRadius(4),
+                    Child = text
+                });
+            }
+        return cells;
     }
 
     private void UpdateCapsWarning() =>

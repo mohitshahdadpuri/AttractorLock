@@ -36,7 +36,7 @@ with no loop and no dependence on an "unlocked" notification.
 | Curtain crashes | It locks Windows first, then quits |
 | Curtain freezes (UI stuck >10 s) | Watchdog locks Windows and ends the process |
 | Curtain killed (Task Manager etc.) | The tray notices the abnormal exit and locks Windows |
-| Password file missing / damaged | The curtain refuses to start, and the tray asks you to set a new password |
+| Password file missing / damaged / from another account | The curtain refuses to start, and the tray asks you to set a new password |
 | Monitor plugged/unplugged | Curtains are rebuilt to cover the new layout |
 
 ### Shortcuts
@@ -52,6 +52,34 @@ At least 4 characters. No control characters, and no emoji: the curtain blocks t
 key, so the emoji panel isn't available there. The password box warns when Caps Lock is on.
 The password is stored as a salted PBKDF2-SHA256 hash (600 000 iterations) in
 `%APPDATA%\AttractorLock\cfg.dat`, written atomically. Files from the first version still work.
+
+### Grid code (a different code every time)
+Instead of a fixed password you can pick **Grid code** in **Set password…**. Each time you click
+**Access**, the dialog shows a new 5×5 grid of random letters and digits. Your secret is:
+
+- an **anchor**: one letter or digit, which appears in the grid exactly once, somewhere new each time
+- a **path**: 3–8 moves (U, D, L, R or arrows) from the anchor, wrapping around the edges
+- **shift by one** (on by default): type the *next* character of each one you land on (A→B, Z→A, 9→0)
+
+Example: anchor `K`, path `R D D L`, shift on.
+
+```
+  Q  7  M  4  X
+  B [K] 2  Z  9        K → right: 2 → down: W → down: N → left: H
+  R  E  W  5  T        shifted by one:  3 X O I
+  3  H  N  8  C
+  P  6  J  Y  A        type: 3XOI   (case and spaces don't matter)
+```
+
+Someone who watches you unlock sees a code that won't work next time. O and I never appear in
+grids, so they can't be confused with 0 and 1, but they can be part of an answer (N→O, H→I).
+The setup window shows a practice grid and the answer for it, so you can check you've got it
+before saving. A wrong code locks Windows, exactly like a wrong password.
+
+The grid secret has to be readable to work out each answer, so it can't be hashed. Instead it is
+encrypted with Windows DPAPI for your account and stored in the same `cfg.dat`. If the file is
+copied to another account or PC it can't be decrypted there, so the curtain refuses to start and
+the tray asks you to set it again. Choosing a fixed password again replaces the grid secret.
 
 ## Build (on your Windows machine)
 

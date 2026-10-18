@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Check line endings
+        shell: bash
+        run: |
+          # The repository must store LF only; .gitattributes turns it into CRLF on checkout.
+          bad=$(git ls-files --eol | awk '$1 != "i/lf" && $1 != "i/none" && $1 != "i/-text"')
+          if [ -n "$bad" ]; then echo "Files stored with CRLF:"; echo "$bad"; exit 1; fi
+      - run: dotnet build AttractorLock.sln -c Release
+      - name: Unit, integration and process tests
+        run: dotnet test AttractorLock.sln -c Release --no-build --logger "console;verbosity=normal"
+
+  e2e:
+    name: End-to-end tests (Windows desktop)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet build AttractorLock.sln -c Release
+      - name: E2E tests (always in --test mode, never locks)
+        env:
+          ATTRACTORLOCK_E2E: "1"
+        run: dotnet test AttractorLock.sln -c Release --no-build --filter Category=E2E --logger "console;verbosity=normal"

@@ -174,6 +174,66 @@ public sealed class E2ETests : IDisposable
         }
     }
 
+    // ---------- Grid mode ----------
+
+    private static readonly GridSecret Grid = new('K', "RDDL", shift: true);
+
+    private static TestDataDir GridDataDir()
+    {
+        var data = new TestDataDir();
+        data.Store.SetGrid(Grid);
+        return data;
+    }
+
+    private GridChallenge ReadGrid(CurtainProcess p)
+    {
+        var dlg = Dialog(p);
+        var cells = new char[GridChallenge.Size * GridChallenge.Size];
+        for (int r = 0; r < GridChallenge.Size; r++)
+            for (int c = 0; c < GridChallenge.Size; c++)
+            {
+                var cell = WaitFor(() => dlg.FindFirstDescendant(cf => cf.ByAutomationId($"GridCell{r}{c}")), Short, "grid cell");
+                cells[r * GridChallenge.Size + c] = cell.Name.Single();
+            }
+        return new GridChallenge(new string(cells));
+    }
+
+    [E2EFact]
+    public void GridMode_CodeReadFromTheGrid_ExitsCleanly()
+    {
+        using var data = GridDataDir();
+        using var p = StartAndWait(data);
+
+        OpenDialog(p);
+        SubmitPassword(p, Grid.ExpectedAnswer(ReadGrid(p)));
+
+        AssertExitsCleanly(p);
+        Assert.Empty(p.LockLogReasons());
+    }
+
+    [E2EFact]
+    public void GridMode_EachAttemptGetsANewGrid_AndAStaleCodeLocks()
+    {
+        using var data = GridDataDir();
+        using var p = StartAndWait(data);
+
+        OpenDialog(p);
+        var first = ReadGrid(p);
+        Dialog(p).FindFirstDescendant(cf => cf.ByAutomationId("CancelButton")).AsButton().Invoke();
+        Thread.Sleep(500);
+
+        OpenDialog(p);
+        var second = ReadGrid(p);
+        Assert.NotEqual(first.Cells, second.Cells);
+
+        string stale = Grid.ExpectedAnswer(first);
+        if (stale == Grid.ExpectedAnswer(second)) stale = "ZZZZ";   // astronomically unlikely
+        SubmitPassword(p, stale);
+
+        AssertExitsCleanly(p);
+        Assert.Equal(new[] { "wrong password" }, p.LockLogReasons());
+    }
+
     // ---------- Wrong password / close / focus ----------
 
     [E2EFact]
