@@ -86,13 +86,12 @@ the tray asks you to set it again. Choosing a fixed password again replaces the 
 You need the **.NET 8 SDK** (`winget install Microsoft.DotNet.SDK.8`). Then:
 
 ```powershell
-cd AttractorLock
-dotnet publish -c Release -r win-x64 --self-contained true `
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish AttractorLock/AttractorLock.csproj -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
 ```
 
-The single `AttractorLock.exe` lands in
-`bin\Release\net8.0-windows\win-x64\publish\`.
+Run it from the repository root. The single `AttractorLock.exe` lands in `publish\`, which is
+where the installer looks for it.
 
 > WebView2 runtime is already on Windows 10/11. If a machine is missing it,
 > install from https://developer.microsoft.com/microsoft-edge/webview2/.
