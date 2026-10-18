@@ -11,7 +11,7 @@
     <ApplicationIcon>Assets\AttractorLock.ico</ApplicationIcon>
     <AssemblyName>AttractorLock</AssemblyName>
     <RootNamespace>AttractorLock</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <!-- DPI awareness is declared in app.manifest on purpose: the WPF curtain needs
          per-monitor-v2 before any window exists, which the WinForms API can't guarantee. -->
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
