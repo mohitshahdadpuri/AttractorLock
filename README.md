@@ -9,7 +9,9 @@ and every screen fills with slowly changing strange attractors. To get back in, 
 Alt+F4, Alt+Tab or killing the process, sends the person to the real Windows lock screen.
 
 It's for the office desk you walk away from for a few minutes: quicker to come back to than
-Win+L, and nobody can quietly use your session while you're gone.
+Win+L and MFA, and nobody can quietly use your session while you're gone.
+
+Note - THIS IS SPECIFICALLY FOR CASE OF ENDPOINT MFA SO IT IS MOST PROBABLY USELESS TO YOU. 
 
 ## Install
 
