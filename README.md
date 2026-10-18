@@ -11,7 +11,7 @@ Alt+F4, Alt+Tab or killing the process, sends the person to the real Windows loc
 It's for the office desk you walk away from for a few minutes: quicker to come back to than
 Win+L and MFA, and nobody can quietly use your session while you're gone.
 
-Note - THIS IS SPECIFICALLY FOR CASE OF ENDPOINT MFA SO IT IS MOST PROBABLY USELESS TO YOU. 
+Note - THIS IS SPECIFICALLY FOR CASE OF ENDPOINT MFA SO IT IS MOST PROBABLY USELESS FOR YOU. 
 
 ## Install
 
